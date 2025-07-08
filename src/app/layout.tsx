@@ -7,8 +7,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Tempo - Modern SaaS Starter",
-  description: "A modern full-stack starter template powered by Next.js",
+  title: "UTCluj - Convertisseur de vidéos YouTube",
+  description: "Convertissez vos vidéos YouTube en MP3, MP4, WAV, etc.",
 };
 
 export default function RootLayout({

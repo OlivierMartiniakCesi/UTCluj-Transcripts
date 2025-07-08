@@ -35,8 +35,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Link,
+  Video,
+  Music,
 } from "lucide-react";
-import { createClient } from "../../supabase/client";
+import { transcriptionService, TranscriptionResult } from "../lib/transcription-service";
 
 type TranscriptFormat = "txt" | "srt" | "json";
 type ProcessingStatus = "idle" | "processing" | "completed" | "error";
@@ -60,29 +63,35 @@ export default function TranscribeForm() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("input");
 
-  const supabase = createClient();
 
-  const validateUrl = (url: string): boolean => {
-    const youtubeRegex = /^(https?\:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
-    return youtubeRegex.test(url);
+
+  const validateUrl = (url: string): { isValid: boolean; type: string } => {
+    return transcriptionService.validateUrl(url);
   };
 
-  const getUrlType = (url: string): "video" | "playlist" | "channel" => {
-    if (url.includes("playlist")) return "playlist";
-    if (url.includes("channel") || url.includes("@")) return "channel";
-    return "video";
+  const getUrlType = (url: string): "video" | "playlist" | "channel" | "audio" | "unknown" => {
+    const validation = validateUrl(url);
+    if (validation.type === 'youtube') {
+      if (url.includes("playlist")) return "playlist";
+      if (url.includes("channel") || url.includes("@")) return "channel";
+      return "video";
+    }
+    if (validation.type === 'audio') return "audio";
+    if (validation.type === 'video') return "video";
+    return "unknown";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!url.trim()) {
-      setError("Veuillez entrer une URL YouTube");
+      setError("Veuillez entrer une URL");
       return;
     }
 
-    if (!validateUrl(url)) {
-      setError("URL YouTube invalide. Veuillez vérifier le format.");
+    const validation = validateUrl(url);
+    if (!validation.isValid) {
+      setError("URL invalide. Veuillez vérifier le format.");
       return;
     }
 
@@ -91,54 +100,38 @@ export default function TranscribeForm() {
     setProgress(0);
     setActiveTab("progress");
 
-    // Simulation du processus de transcription
-    const urlType = getUrlType(url);
-    const totalSteps = urlType === "playlist" ? 5 : 3;
+    try {
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 1000);
 
-    for (let i = 0; i <= totalSteps; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setProgress((i / totalSteps) * 100);
+      // Call the transcription service
+      const result = await transcriptionService.transcribeUrl({
+        url: url.trim(),
+        language: language === 'auto' ? undefined : language,
+        format
+      });
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      setResults([result]);
+      setStatus("completed");
+      setActiveTab("results");
+
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setError(error instanceof Error ? error.message : "Erreur lors de la transcription");
+      setStatus("error");
+      setActiveTab("input");
     }
-
-    // Simulation des résultats
-    const mockResults: TranscriptResult[] = [
-      {
-        id: "1",
-        title: "Comment créer une application web moderne",
-        url: url,
-        transcript:
-          "Bonjour et bienvenue dans ce tutoriel sur la création d'applications web modernes. Aujourd'hui, nous allons explorer les technologies les plus récentes...",
-        duration: "15:32",
-        language: "fr",
-      },
-    ];
-
-    if (urlType === "playlist") {
-      mockResults.push(
-        {
-          id: "2",
-          title: "Les bases de React et Next.js",
-          url: url,
-          transcript:
-            "Dans cette vidéo, nous allons découvrir les fondamentaux de React et comment Next.js peut améliorer votre développement...",
-          duration: "22:15",
-          language: "fr",
-        },
-        {
-          id: "3",
-          title: "Déploiement et optimisation",
-          url: url,
-          transcript:
-            "Pour finaliser notre application, nous devons nous concentrer sur le déploiement et l'optimisation des performances...",
-          duration: "18:45",
-          language: "fr",
-        },
-      );
-    }
-
-    setResults(mockResults);
-    setStatus("completed");
-    setActiveTab("results");
   };
 
   const copyToClipboard = (text: string) => {
@@ -218,11 +211,11 @@ export default function TranscribeForm() {
         <TabsContent value="input">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Youtube className="w-5 h-5 text-red-600" />
-              URL YouTube
+              <Link className="w-5 h-5 text-blue-600" />
+              URL Vidéo/Audio
             </CardTitle>
             <CardDescription>
-              Entrez l'URL d'une vidéo, playlist ou chaîne YouTube pour extraire
+              Entrez l'URL d'une vidéo YouTube, fichier audio ou vidéo pour extraire
               les transcriptions.
             </CardDescription>
           </CardHeader>
@@ -231,51 +224,69 @@ export default function TranscribeForm() {
               {/* URL Input */}
               <div className="space-y-2">
                 <Label htmlFor="url" className="text-sm font-medium">
-                  URL YouTube *
+                  URL Vidéo/Audio *
                 </Label>
                 <div className="relative">
                   <Input
                     id="url"
                     type="url"
-                    placeholder="https://www.youtube.com/watch?v=... ou https://www.youtube.com/playlist?list=..."
+                    placeholder="https://www.youtube.com/watch?v=... ou https://example.com/audio.mp3"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     className="pl-10"
                     disabled={status === "processing"}
                   />
-                  <Youtube className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Link className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 </div>
-                {url && (
-                  <div className="flex items-center gap-2 text-sm">
-                    {getUrlType(url) === "video" && (
-                      <Badge
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                      >
-                        <Play className="w-3 h-3" />
-                        Vidéo
-                      </Badge>
-                    )}
-                    {getUrlType(url) === "playlist" && (
-                      <Badge
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                      >
-                        <List className="w-3 h-3" />
-                        Playlist
-                      </Badge>
-                    )}
-                    {getUrlType(url) === "channel" && (
-                      <Badge
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                      >
-                        <Youtube className="w-3 h-3" />
-                        Chaîne
-                      </Badge>
-                    )}
-                  </div>
-                )}
+                                  {url && (
+                    <div className="flex items-center gap-2 text-sm">
+                      {getUrlType(url) === "video" && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <Video className="w-3 h-3" />
+                          Vidéo
+                        </Badge>
+                      )}
+                      {getUrlType(url) === "playlist" && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <List className="w-3 h-3" />
+                          Playlist
+                        </Badge>
+                      )}
+                      {getUrlType(url) === "channel" && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <Youtube className="w-3 h-3" />
+                          Chaîne
+                        </Badge>
+                      )}
+                      {getUrlType(url) === "audio" && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <Music className="w-3 h-3" />
+                          Audio
+                        </Badge>
+                      )}
+                      {getUrlType(url) === "unknown" && (
+                        <Badge
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <Link className="w-3 h-3" />
+                          URL
+                        </Badge>
+                      )}
+                    </div>
+                  )}
               </div>
 
               {/* Format Selection */}

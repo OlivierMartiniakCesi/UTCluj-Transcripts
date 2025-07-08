@@ -212,7 +212,9 @@ export const checkUserSubscription = async (userId: string) => {
     .single();
 
   if (error) {
-    return false;
+    // Pour le moment, on permet l'accès même sans abonnement
+    // Vous pouvez changer cela selon vos besoins
+    return true; // Permet l'accès gratuit
   }
 
   return !!subscription;
